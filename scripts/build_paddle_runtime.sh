@@ -20,7 +20,7 @@ fi
 python3 "$ort_src/tools/ci_build/build.py" --config MinSizeRel --build_dir "$work_dir/ort-$target" \
   "${ort_args[@]}" --skip_tests --skip_submodule_sync --parallel 4 --compile_no_warning_as_error \
   --disable_ml_ops --use_preinstalled_eigen --eigen_path "$work_dir/eigen-e7248b26a1ed53fa030c5c459f7ea095dfd276ac" \
-  --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+  --cmake_extra_defines CMAKE_POLICY_VERSION_MINIMUM=3.5 onnxruntime_BUILD_UNIT_TESTS=OFF \
   onnxruntime_USE_COREML=OFF onnxruntime_USE_XNNPACK=OFF onnxruntime_DISABLE_EXCEPTIONS=OFF \
   CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
 cmake -S "$cv_src" -B "$work_dir/cv-$target" -G Ninja "${cv_args[@]}" \
