@@ -93,6 +93,17 @@ jobs:
           set -euxo pipefail
           bash scripts/build_paddle_runtime.sh ios
 
+      - name: Upload iOS ARM64 static libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-mcp-paddleocr-static-libs-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            third_party/paddleocr/runtime/ios/lib/libonnxruntime.a
+            third_party/paddleocr/runtime/ios/opencv/lib/libopencv_core.a
+            third_party/paddleocr/runtime/ios/opencv/lib/libopencv_imgproc.a
+
       - name: Build and audit OCR worker
         shell: bash
         run: |
