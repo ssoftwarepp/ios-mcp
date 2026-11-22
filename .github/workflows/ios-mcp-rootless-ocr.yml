@@ -1,0 +1,122 @@
+name: Build iOS MCP Rootless with PaddleOCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-mcp-rootless-ocr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-rootless:
+    # Xcode 16.4 is required by docs/PADDLEOCR.md.
+    runs-on: macos-15
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode 16.4
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - name: Verify Apple toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          sudo xcodebuild -license accept
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          brew update
+          brew install cmake ninja ldid dpkg fakeroot xz
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Theos and iOS SDKs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/theos/sdks"
+
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          echo "$HOME/theos/bin" >> "$GITHUB_PATH"
+
+          # The project Makefile references this SDK path for its Preferences framework.
+          test -d "$HOME/theos/sdks/iPhoneOS16.5.sdk"
+
+      - name: Fetch checksum-pinned OCR sources and models
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/fetch_paddle_dependencies.py
+
+      - name: Prepare pinned PaddleOCR models
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m venv .codex-session-data/paddle-build/venv
+          .codex-session-data/paddle-build/venv/bin/python -m pip install --upgrade pip
+          .codex-session-data/paddle-build/venv/bin/python -m pip install \
+            onnx==1.17.0 \
+            numpy==1.26.4 \
+            PyYAML==6.0.2 \
+            Pillow==11.1.0 \
+            protobuf==6.33.6
+          .codex-session-data/paddle-build/venv/bin/python scripts/prepare_paddleocr.py
+
+      - name: Build iOS ARM64 ONNX Runtime and OpenCV static libraries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/build_paddle_runtime.sh ios
+
+      - name: Build and audit OCR worker
+        shell: bash
+        run: |
+          set -euxo pipefail
+          make -C mcp-ocr-worker
+          python3 scripts/check_paddle_binaries.py
+
+      - name: Run OCR unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/test_ocr_unit.sh
+
+      - name: Build Rootless release DEB
+        shell: bash
+        run: |
+          set -euxo pipefail
+          printf '2\n1\n' | ./build.sh
+          ls -lah packages/*.deb
+
+      - name: Upload Rootless DEB, static libraries, models and audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-mcp-rootless-paddleocr-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            packages/*.deb
+            third_party/paddleocr/runtime/ios/lib/*.a
+            third_party/paddleocr/runtime/ios/opencv/lib/*.a
+            third_party/paddleocr/runtime/ios/include/*.h
+            third_party/paddleocr/runtime/ios/opencv/include/**
+            third_party/paddleocr/models/*
+            .codex-session-data/paddle-build/binary-audit.json
