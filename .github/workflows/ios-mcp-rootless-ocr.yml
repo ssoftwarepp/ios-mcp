@@ -66,6 +66,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          mkdir -p .codex-session-data/paddle-build
+          curl -fL --retry 3 --retry-all-errors --max-time 1200 \
+            https://github.com/ssoftwarepp/ios-mcp/releases/download/ocr-source-onnxruntime-1.20.1/onnxruntime-1.20.1.tar.gz \
+            -o .codex-session-data/paddle-build/onnxruntime-1.20.1.tar.gz
+          echo 'd4c005506a2bbf88a838b14f8d1578406b8be2fb64abb50beeff908fb272529e  .codex-session-data/paddle-build/onnxruntime-1.20.1.tar.gz' | shasum -a 256 -c -
           python3 scripts/fetch_paddle_dependencies.py
 
       - name: Prepare pinned PaddleOCR models
