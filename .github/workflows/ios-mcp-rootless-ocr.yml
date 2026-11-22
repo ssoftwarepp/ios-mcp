@@ -106,17 +106,56 @@ jobs:
           printf '2\n1\n' | ./build.sh
           ls -lah packages/*.deb
 
-      - name: Upload Rootless DEB, static libraries, models and audit
+      - name: Verify package resources and assemble complete artifact
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bundle="$GITHUB_WORKSPACE/artifacts/ios-mcp-rootless-paddleocr"
+          rm -rf "$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$bundle" "$bundle/deb-root" "$bundle/packages" "$bundle/runtime" "$bundle/models" "$bundle/sources"
+
+          deb="$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb"
+          test "$(find packages -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')" = 1
+          dpkg-deb --info "$deb" > "$bundle/package-control.txt"
+          dpkg-deb --contents "$deb" > "$bundle/package-contents.txt"
+          dpkg-deb --extract "$deb" "$bundle/deb-root"
+
+          package_root="$bundle/deb-root"
+          if test -d "$package_root/var/jb"; then package_root="$package_root/var/jb"; fi
+          test -x "$package_root/usr/libexec/ios-mcp/mcp-ocr-worker"
+          test -f "$package_root/usr/share/ios-mcp/paddleocr/det.onnx"
+          test -f "$package_root/usr/share/ios-mcp/paddleocr/rec.onnx"
+          test -f "$package_root/usr/share/ios-mcp/paddleocr/dictionary.json"
+          test -f "$package_root/usr/share/ios-mcp/paddleocr/sha256.json"
+          test -f third_party/paddleocr/runtime/ios/lib/libonnxruntime.a
+          test -f third_party/paddleocr/runtime/ios/opencv/lib/libopencv_core.a
+          test -f third_party/paddleocr/runtime/ios/opencv/lib/libopencv_imgproc.a
+          test -f .codex-session-data/paddle-build/binary-audit.json
+
+          cp "$deb" "$bundle/packages/"
+          cp -R third_party/paddleocr/models/. "$bundle/models/"
+          cp -R third_party/paddleocr/runtime/ios/. "$bundle/runtime/"
+          cp -R third_party/paddleocr/clipper "$bundle/clipper"
+          cp third_party/paddleocr/dependencies.lock.json "$bundle/"
+          cp third_party/paddleocr/LICENSE* third_party/paddleocr/ONNXRuntime-ThirdPartyNotices.txt "$bundle/"
+          cp .codex-session-data/paddle-build/binary-audit.json "$bundle/"
+          cp mcp-ocr-worker/.theos/obj/mcp-ocr-worker "$bundle/"
+          cp .codex-session-data/paddle-build/onnxruntime-1.20.1.tar.gz "$bundle/sources/"
+          cp .codex-session-data/paddle-build/opencv-4.10.0.tar.gz "$bundle/sources/"
+          cp .codex-session-data/paddle-build/eigen.zip "$bundle/sources/"
+
+          (
+            cd "$bundle"
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+          )
+          du -sh "$bundle"
+          find "$bundle" -type f -print | sort
+
+      - name: Upload complete Rootless build bundle
         uses: actions/upload-artifact@v4
         with:
           name: ios-mcp-rootless-paddleocr-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
-          path: |
-            packages/*.deb
-            third_party/paddleocr/runtime/ios/lib/*.a
-            third_party/paddleocr/runtime/ios/opencv/lib/*.a
-            third_party/paddleocr/runtime/ios/include/*.h
-            third_party/paddleocr/runtime/ios/opencv/include/**
-            third_party/paddleocr/models/*
-            .codex-session-data/paddle-build/binary-audit.json
+          path: artifacts/ios-mcp-rootless-paddleocr
