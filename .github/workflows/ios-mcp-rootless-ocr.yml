@@ -104,6 +104,35 @@ jobs:
             third_party/paddleocr/runtime/ios/opencv/lib/libopencv_core.a
             third_party/paddleocr/runtime/ios/opencv/lib/libopencv_imgproc.a
 
+      - name: Archive complete ONNX Runtime and OpenCV build outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          work=.codex-session-data/paddle-build
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs"
+          test -d "$work/ort-ios"
+          test -d "$work/cv-ios"
+          test -f third_party/paddleocr/runtime/ios/include/onnxruntime_cxx_api.h
+          test -f third_party/paddleocr/runtime/ios/opencv/include/opencv4/opencv2/core.hpp
+          test -f third_party/paddleocr/runtime/ios/opencv/include/opencv4/opencv2/imgproc.hpp
+          tar -C "$work" -czf "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs/onnxruntime-ios-build.tar.gz" ort-ios
+          tar -C "$work" -czf "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs/opencv-ios-build.tar.gz" cv-ios
+          tar -C third_party/paddleocr -czf "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs/runtime-ios.tar.gz" runtime/ios
+          (
+            cd "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs"
+            shasum -a 256 onnxruntime-ios-build.tar.gz opencv-ios-build.tar.gz runtime-ios.tar.gz > SHA256SUMS
+          )
+          ls -lh "$GITHUB_WORKSPACE/artifacts/paddle-build-outputs"
+
+      - name: Upload complete ONNX Runtime and OpenCV build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-mcp-paddleocr-complete-build-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          path: artifacts/paddle-build-outputs/
+
       - name: Build and audit OCR worker
         shell: bash
         run: |
