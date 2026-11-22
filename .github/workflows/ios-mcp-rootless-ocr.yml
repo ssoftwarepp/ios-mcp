@@ -117,6 +117,30 @@ jobs:
           set -euxo pipefail
           bash scripts/test_ocr_unit.sh
 
+      - name: Build iOS ARM64 libzip 1.7.3 for package helpers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 --retry-all-errors --max-time 300 \
+            https://codeload.github.com/nih-at/libzip/tar.gz/66e496489bdae81bfda8b0088172871d8fda0032 \
+            -o "$RUNNER_TEMP/libzip-1.7.3.tar.gz"
+          echo "fbc958c231a681eb0c4b05bad4b400c02493bbba0bafda52d8a0d9b2c1d3d5b0  $RUNNER_TEMP/libzip-1.7.3.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/libzip-1.7.3.tar.gz" -C "$RUNNER_TEMP"
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          cmake -S "$RUNNER_TEMP/libzip-66e496489bdae81bfda8b0088172871d8fda0032" -B "$RUNNER_TEMP/libzip-build" -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TOOLS=OFF -DBUILD_REGRESS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOC=OFF \
+            -DENABLE_COMMONCRYPTO=OFF -DENABLE_GNUTLS=OFF -DENABLE_MBEDTLS=OFF -DENABLE_OPENSSL=OFF \
+            -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DLIBZIP_DO_INSTALL=OFF
+          cmake --build "$RUNNER_TEMP/libzip-build" --target zip --parallel 4
+          mkdir -p "$THEOS/lib"
+          cp "$RUNNER_TEMP/libzip-build/lib/libzip.a" "$THEOS/lib/libzip.a"
+          test -s "$THEOS/lib/libzip.a"
+          xcrun lipo -archs "$THEOS/lib/libzip.a"
+          xcrun otool -l "$THEOS/lib/libzip.a" > "$RUNNER_TEMP/libzip-load-commands.txt"
+          grep -A 5 LC_BUILD_VERSION "$RUNNER_TEMP/libzip-load-commands.txt" | sed -n '1,8p'
+
       - name: Build Rootless release DEB
         shell: bash
         run: |
